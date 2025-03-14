@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Visualizer Widget</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: transparent;
+        }
+        
+        .widget-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .progress-track {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            max-width: 230px;
+            max-height: 230px;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        .progress-segments-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            max-width: 230px;
+            max-height: 230px;
+            border-radius: 50%;
+            overflow: hidden;
+        }
+        
+        .progress-segment {
+            position: absolute;
+            width: 6px;
+            height: 20px;
+            background-color: #bc2326;
+            border-radius: 3px;
+            transform-origin: center center;
+        }
+        
+        .widget-base {
+            width: 100%;
+            height: 100%;
+            max-width: 200px;
+            max-height: 200px;
+            background-color: #222222;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .visualizer-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .visualizer-element {
+            width: 10px;
+            height: 10px;
+            background-color: #bc2326;
+            border-radius: 50%;
+            transition: height 0.1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget-container">
+        <div class="progress-track"></div>
+        <div class="progress-segments-container" id="progressContainer"></div>
+        <div class="widget-base">
+            <div class="visualizer-container">
+                <div class="visualizer-element" id="vis1"></div>
+                <div class="visualizer-element" id="vis2"></div>
+                <div class="visualizer-element" id="vis3"></div>
+            </div>
+        </div>
+    </div>
+
+    <audio id="audioElement" src="https://cdn.pixabay.com/download/audio/2021/11/25/audio_8db59eb558.mp3?filename=electronic-rock-king-around-here-15045.mp3"></audio>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const audioElement = document.getElementById('audioElement');
+            const progressContainer = document.getElementById('progressContainer');
+            const vis1 = document.getElementById('vis1');
+            const vis2 = document.getElementById('vis2');
+            const vis3 = document.getElementById('vis3');
+            const widgetBase = document.querySelector('.widget-base');
+            
+            let audioContext;
+            let analyser;
+            let dataArray;
+            let source;
+            let animationId;
+            let isPlaying = false;
+            
+            // Create progress segments
+            const totalSegments = 40;
+            const containerSize = Math.min(window.innerWidth, window.innerHeight);
+            const centerX = containerSize / 2;
+            const centerY = containerSize / 2;
+            const radius = containerSize * 0.38;
+            
+            for (let i = 0; i < totalSegments; i++) {
+                const segment = document.createElement('div');
+                segment.className = 'progress-segment';
+                const angle = i * (360 / totalSegments);
+                const angleRad = (angle - 90) * Math.PI / 180;
+                const x = centerX + radius * Math.cos(angleRad);
+                const y = centerY + radius * Math.sin(angleRad);
+                
+                segment.style.left = `${x}px`;
+                segment.style.top = `${y}px`;
+                segment.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+                segment.style.opacity = '0';
+                progressContainer.appendChild(segment);
+            }
+            
+            const progressSegments = document.querySelectorAll('.progress-segment');
+
+            // Initialize audio context
+            function initAudio() {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    analyser.fftSize = 64;
+                    
+                    source = audioContext.createMediaElementSource(audioElement);
+                    source.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                    
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
+                } catch (e) {
+                    console.error("Web Audio API error:", e);
+                    // Fallback to just visual animation without audio analysis
+                    simulateVisualization();
+                }
+            }
+
+            // Simulate visualization without audio analysis (fallback)
+            function simulateVisualization() {
+                function animate() {
+                    const time = Date.now() / 1000;
+                    const value1 = Math.sin(time * 2) * 0.5 + 0.5;
+                    const value2 = Math.sin(time * 2.5 + 1) * 0.5 + 0.5;
+                    const value3 = Math.sin(time * 3 + 2) * 0.5 + 0.5;
+                    
+                    updateVisualizer(vis1, value1 * 255);
+                    updateVisualizer(vis2, value2 * 255);
+                    updateVisualizer(vis3, value3 * 255);
+                    
+                    requestAnimationFrame(animate);
+                }
+                animate();
+            }
+
+            // Start audio
+            function startAudio() {
+                if (!audioContext) {
+                    initAudio();
+                }
+                
+                audioElement.play().then(() => {
+                    isPlaying = true;
+                    visualize();
+                    updateProgressBar();
+                }).catch(error => {
+                    console.error("Playback failed:", error);
+                    // Fallback to simulation if audio play fails
+                    simulateVisualization();
+                    // Store in localStorage to remember user attempted to play
+                    localStorage.setItem('widgetPlaying', 'true');
+                });
+            }
+
+            // Reset visualizer to initial state
+            function resetVisualizer() {
+                vis1.style.height = '10px';
+                vis1.style.borderRadius = '50%';
+                vis2.style.height = '10px';
+                vis2.style.borderRadius = '50%';
+                vis3.style.height = '10px';
+                vis3.style.borderRadius = '50%';
+                
+                // Reset progress segments
+                progressSegments.forEach(segment => {
+                    segment.style.opacity = '0';
+                });
+            }
+
+            // Visualize audio
+            function visualize() {
+                if (!isPlaying) return;
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                // Get frequency data for low, mid, and high ranges
+                const lowFreq = dataArray[1] || 0;
+                const midFreq = dataArray[8] || 0;
+                const highFreq = dataArray[15] || 0;
+                
+                // Update visualizer elements
+                updateVisualizer(vis1, lowFreq);
+                updateVisualizer(vis2, midFreq);
+                updateVisualizer(vis3, highFreq);
+                
+                animationId = requestAnimationFrame(visualize);
+            }
+
+            // Update individual visualizer element
+            function updateVisualizer(element, value) {
+                // Calculate height based on frequency value (minimum 10px, max 80px)
+                const height = 10 + (value / 255) * 70;
+                element.style.height = `${height}px`;
+                
+                // Change border radius based on height
+                if (height > 10) {
+                    element.style.borderRadius = '5px';
+                } else {
+                    element.style.borderRadius = '50%';
+                }
+            }
+            
+            // Update progress bar
+            function updateProgressBar() {
+                if (!isPlaying) return;
+                
+                const currentTime = audioElement.currentTime;
+                const duration = audioElement.duration || 1;
+                const progress = currentTime / duration;
+                const segmentsToShow = Math.floor(progress * totalSegments);
+                
+                progressSegments.forEach((segment, index) => {
+                    if (index < segmentsToShow) {
+                        segment.style.opacity = '1';
+                    } else {
+                        segment.style.opacity = '0';
+                    }
+                });
+                
+                requestAnimationFrame(updateProgressBar);
+            }
+
+            // Handle audio ended event
+            audioElement.addEventListener('ended', function() {
+                isPlaying = false;
+                cancelAnimationFrame(animationId);
+                resetVisualizer();
+                
+                // Restart after a short delay
+                setTimeout(() => {
+                    audioElement.currentTime = 0;
+                    startAudio();
+                }, 1500);
+            });
+            
+            // Toggle play/pause on click
+            widgetBase.addEventListener('click', function() {
+                if (isPlaying) {
+                    audioElement.pause();
+                    isPlaying = false;
+                    cancelAnimationFrame(animationId);
+                    resetVisualizer();
+                    localStorage.setItem('widgetPlaying', 'false');
+                } else {
+                    startAudio();
+                    localStorage.setItem('widgetPlaying', 'true');
+                }
+            });
+            
+            // Check if widget was playing before
+            if (localStorage.getItem('widgetPlaying') === 'true') {
+                startAudio();
+            }
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                // Recalculate position of progress segments
+                const containerSize = Math.min(window.innerWidth, window.innerHeight);
+                const centerX = containerSize / 2;
+                const centerY = containerSize / 2;
+                const radius = containerSize * 0.38;
+                
+                progressSegments.forEach((segment, i) => {
+                    const angle = i * (360 / totalSegments);
+                    const angleRad = (angle - 90) * Math.PI / 180;
+                    const x = centerX + radius * Math.cos(angleRad);
+                    const y = centerY + radius * Math.sin(angleRad);
+                    
+                    segment.style.left = `${x}px`;
+                    segment.style.top = `${y}px`;
+                });
+            });
+        });
+    </script>
+</body>
+</html>
